@@ -1,4 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Hi, Gena!</h1>
+<h1>Hi, Masha!</h1>
+{% if is_admin() %}
+<h1>Hi Admin</h1>
+{% elif is_moderator() %}
+<h1>Hi Moder</h1>
+{% elif is_user() %}
+<h1>Hi User</h1>
+{% endif %}
 {% endblock %}
