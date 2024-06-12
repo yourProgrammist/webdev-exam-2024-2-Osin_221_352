@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form method='POST' action="{{ url_for('authentication') }}" class="container">
+    <div class="mb-3">
+      <label for="formLogin" class="form-label">Логин</label>
+      <input type='login' class="form-control" id="formLogin" name="login">
+    </div>
+    <div class="mb-3">
+      <label for="formPassword" class="form-label">Пароль</label>
+      <input type="password" class="form-control" id="formPassword" name="password">
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" class="form-check-input" id="formCheckBox" name="remember_user">
+      <label class="form-check-label" for="formCheckBox">Запомнить меня</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Войти</button>
+</form>
+{% endblock content %}
