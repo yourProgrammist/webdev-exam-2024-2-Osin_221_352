@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, make_response
 from mysql_db import MySQL
 from flask_login import current_user, LoginManager, login_user, logout_user, login_required
 from models import User, Role
@@ -59,82 +59,86 @@ def load_role(role_id):
     return Role(role.id, role.role, role.description)
 
 
+def load_books(cur_page, per_page):
+    offset = (cur_page - 1) * per_page
+
+    cursor = db.connection().cursor(dictionary=True)
+    query = 'SELECT COUNT(*) FROM description_book'
+    cursor.execute(query)
+    count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    query = """
+            WITH book_genres AS (
+                SELECT bg.book_id, GROUP_CONCAT(g.name SEPARATOR ', ') as genres
+                FROM book_genre bg
+                JOIN genres g ON bg.genre_id = g.id
+                GROUP BY bg.book_id
+            ),
+            book_reviews AS (
+                SELECT r.book_id, ROUND(AVG(r.mark), 1) as average_mark, COUNT(r.id) as review_count
+                FROM reviews r
+                GROUP BY r.book_id
+            )
+            SELECT b.id, b.title, b.year_publish, bg.genres, br.average_mark, br.review_count
+            FROM description_book b
+            LEFT JOIN book_genres bg ON b.id = bg.book_id
+            LEFT JOIN book_reviews br ON b.id = br.book_id
+            ORDER BY b.year_publish DESC
+            LIMIT %s OFFSET %s;
+       """
+    cursor.execute(query, (per_page, offset))
+    books = cursor.fetchall()
+
+    return books, count_pages
+
+
+def load_book(book_id):
+    cursor = db.connection().cursor(dictionary=True)
+
+    query = """
+                SELECT
+                    db.id,
+                    db.title,
+                    db.author,
+                    db.publisher,
+                    db.year_publish AS year,
+                    db.size_book,
+                    GROUP_CONCAT(g.name SEPARATOR ', ') AS genres,
+                    db.short_description
+                FROM
+                    description_book db
+                LEFT JOIN
+                    book_genre bg ON db.id = bg.book_id
+                LEFT JOIN
+                    genres g ON bg.genre_id = g.id
+                WHERE
+                    db.id = %s
+                GROUP BY
+                    db.id
+        """
+
+    cursor.execute(query, (book_id,))
+    book = cursor.fetchone()
+    book['genres'] = book['genres'].split(', ')
+
+    return book
+
+
+def load_genres():
+    cursor = db.connection().cursor(named_tuple=True)
+    query = 'SELECT name FROM genres'
+    cursor.execute(query)
+    genres = cursor.fetchall()
+    genres = [genre.name for genre in genres]
+    return genres
+
+
 @app.route('/')
 @app.route('/index')
-def index():
-    books = [
-        {
-            'title': 'Book Title 1',
-            'genres': ['Genre1', 'Genre2'],
-            'year': 2021,
-            'average_rating': 4.5,
-            'review_count': 10
-        },
-        {
-            'title': 'Book Title 2',
-            'genres': ['Genre3'],
-            'year': 2020,
-            'average_rating': 3.8,
-            'review_count': 5
-        },
-        {
-            'title': 'Book Title 1',
-            'genres': ['Genre1', 'Genre2'],
-            'year': 2021,
-            'average_rating': 4.5,
-            'review_count': 10
-        },
-        {
-            'title': 'Book Title 2',
-            'genres': ['Genre3'],
-            'year': 2020,
-            'average_rating': 3.8,
-            'review_count': 5
-        },
-        {
-            'title': 'Book Title 1',
-            'genres': ['Genre1', 'Genre2'],
-            'year': 2021,
-            'average_rating': 4.5,
-            'review_count': 10
-        },
-        {
-            'title': 'Book Title 2',
-            'genres': ['Genre3'],
-            'year': 2020,
-            'average_rating': 3.8,
-            'review_count': 5
-        },
-        {
-            'title': 'Book Title 1',
-            'genres': ['Genre1', 'Genre2'],
-            'year': 2021,
-            'average_rating': 4.5,
-            'review_count': 10
-        },
-        {
-            'title': 'Book Title 2',
-            'genres': ['Genre3'],
-            'year': 2020,
-            'average_rating': 3.8,
-            'review_count': 5
-        },
-        {
-            'title': 'Book Title 1',
-            'genres': ['Genre1', 'Genre2'],
-            'year': 2021,
-            'average_rating': 4.5,
-            'review_count': 10
-        },
-        {
-            'title': 'Book Title 2',
-            'genres': ['Genre3'],
-            'year': 2020,
-            'average_rating': 3.8,
-            'review_count': 5
-        }
-    ]
-    return render_template("index.html", books=books)
+@app.route('/index/<int:page>')
+def index(page=1):
+    books, count_pages = load_books(page, app.config["POSTS_PER_PAGE"])
+    return render_template("index.html", books=books, page=page, count_pages=count_pages)
 
 
 @app.route('/login')
@@ -177,7 +181,7 @@ def logout():
 @login_required
 @roles_required('admin')
 def add_book():
-    genres = ['Детектив', 'Хоррор', 'Фантастика']
+    genres = load_genres()
     print(request.method)
     if request.method == 'POST':
         title = request.form['title']
@@ -188,18 +192,17 @@ def add_book():
         size_book = request.form['size_book']
         genres_selected = request.form.getlist('genres')
         cover = request.files['cover']
-        print(title)
 
         if not cover:
-            # error
-            ...
+            flash('При сохранении данных возникла ошибка. Проверьте корректность введённых данных.', 'danger')
+            return redirect(request.url)
 
         mime_type = get_mime_type(cover)
         md5_hash = get_md5_hash(cover)
 
         if not mime_type.startswith('image'):
-            # error
-            ...
+            flash('При сохранении данных возникла ошибка. Проверьте корректность введённых данных.', 'danger')
+            return redirect(request.url)
 
         cursor = db.connection().cursor(named_tuple=True)
 
@@ -235,17 +238,65 @@ def add_book():
             end_name = mime_type.split('/')[1]
 
             cover.save(f'{app.config["UPLOAD_FOLDER"]}/{cover_id}.{end_name}')
-            flash("УРАААА", 'success')
+
+            ######### ПЕРЕХОД НА ПРОСМОТР
 
         except Exception as e:
             db.connection().rollback()
-            flash(f'Ошибка при добавлении книги: {str(e)}', 'danger')
+            flash('При сохранении данных возникла ошибка. Проверьте корректность введённых данных.', 'danger')
+            print(f'Ошибка при добавлении книги: {str(e)}')
+            return redirect(request.url)
 
     return render_template('createbook.html', genres=genres)
 
 
-@app.route('/book/edit/<int:book_id>')
+@app.route('/book/edit/<int:book_id>', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'moderator')
 def edit_book(book_id):
-    ...
+    genres = load_genres()
+
+    book = load_book(book_id)
+
+    if request.method == 'POST':
+        title = request.form['title']
+        author = request.form['author']
+        publisher = request.form['publisher']
+        year_publish = request.form['year']
+        size_book = request.form['size_book']
+        short_description = bleach.clean(request.form['short_description'])
+
+        genres_selected = request.form.getlist('genres')
+
+        cursor = db.connection().cursor(named_tuple=True)
+
+        try:
+            cursor.execute("START TRANSACTION")
+
+            query = '''UPDATE description_book 
+                                   SET title = %s, short_description = %s, year_publish = %s, publisher = %s, author = %s, size_book = %s 
+                                   WHERE id = %s'''
+            cursor.execute(query, (title, short_description, year_publish, publisher, author, size_book, book_id))
+
+            query = 'DELETE FROM book_genre WHERE book_id = %s'
+            cursor.execute(query, (book_id,))
+
+            for genre_name in genres_selected:
+                query = 'SELECT id FROM genres WHERE name = %s'
+                cursor.execute(query, (genre_name,))
+                genre_id = cursor.fetchone()[0]
+
+                query = 'INSERT INTO book_genre (book_id, genre_id) VALUES (%s, %s)'
+                cursor.execute(query, (book_id, genre_id))
+
+            db.connection().commit()
+
+            ######### ПЕРЕХОД НА ПРОСМОТР
+
+        except Exception as e:
+            db.connection().rollback()
+            flash('При сохранении данных возникла ошибка. Проверьте корректность введённых данных.', 'danger')
+            print(f'Ошибка при редактировании книги: {str(e)}')
+            return redirect(request.url)
+
+    return render_template('editbook.html', book=book, genres=genres)
