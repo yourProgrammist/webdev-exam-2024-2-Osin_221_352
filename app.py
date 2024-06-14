@@ -3,6 +3,8 @@ from mysql_db import MySQL
 from flask_login import current_user, LoginManager, login_user, logout_user, login_required
 from models import User, Role
 from role_rule import roles_required
+import bleach
+from image_data import get_md5_hash, get_mime_type
 
 app = Flask(__name__)
 
@@ -60,17 +62,85 @@ def load_role(role_id):
 @app.route('/')
 @app.route('/index')
 def index():
-    return render_template("index.html")
+    books = [
+        {
+            'title': 'Book Title 1',
+            'genres': ['Genre1', 'Genre2'],
+            'year': 2021,
+            'average_rating': 4.5,
+            'review_count': 10
+        },
+        {
+            'title': 'Book Title 2',
+            'genres': ['Genre3'],
+            'year': 2020,
+            'average_rating': 3.8,
+            'review_count': 5
+        },
+        {
+            'title': 'Book Title 1',
+            'genres': ['Genre1', 'Genre2'],
+            'year': 2021,
+            'average_rating': 4.5,
+            'review_count': 10
+        },
+        {
+            'title': 'Book Title 2',
+            'genres': ['Genre3'],
+            'year': 2020,
+            'average_rating': 3.8,
+            'review_count': 5
+        },
+        {
+            'title': 'Book Title 1',
+            'genres': ['Genre1', 'Genre2'],
+            'year': 2021,
+            'average_rating': 4.5,
+            'review_count': 10
+        },
+        {
+            'title': 'Book Title 2',
+            'genres': ['Genre3'],
+            'year': 2020,
+            'average_rating': 3.8,
+            'review_count': 5
+        },
+        {
+            'title': 'Book Title 1',
+            'genres': ['Genre1', 'Genre2'],
+            'year': 2021,
+            'average_rating': 4.5,
+            'review_count': 10
+        },
+        {
+            'title': 'Book Title 2',
+            'genres': ['Genre3'],
+            'year': 2020,
+            'average_rating': 3.8,
+            'review_count': 5
+        },
+        {
+            'title': 'Book Title 1',
+            'genres': ['Genre1', 'Genre2'],
+            'year': 2021,
+            'average_rating': 4.5,
+            'review_count': 10
+        },
+        {
+            'title': 'Book Title 2',
+            'genres': ['Genre3'],
+            'year': 2020,
+            'average_rating': 3.8,
+            'review_count': 5
+        }
+    ]
+    return render_template("index.html", books=books)
 
 
 @app.route('/login')
 def login():
     return render_template("login.html")
 
-@app.route('/tmp')
-def tmp():
-    print(current_user.role)
-    return render_template("login.html")
 
 @app.route('/login/auth', methods=['POST'])
 def authentication():
@@ -101,3 +171,81 @@ def authentication():
 def logout():
     logout_user()
     return redirect(url_for('index'))
+
+
+@app.route('/book/create', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin')
+def add_book():
+    genres = ['Детектив', 'Хоррор', 'Фантастика']
+    print(request.method)
+    if request.method == 'POST':
+        title = request.form['title']
+        short_description = bleach.clean(request.form['short_description'])
+        year_publish = request.form['year']
+        publisher = request.form['publisher']
+        author = request.form['author']
+        size_book = request.form['size_book']
+        genres_selected = request.form.getlist('genres')
+        cover = request.files['cover']
+        print(title)
+
+        if not cover:
+            # error
+            ...
+
+        mime_type = get_mime_type(cover)
+        md5_hash = get_md5_hash(cover)
+
+        if not mime_type.startswith('image'):
+            # error
+            ...
+
+        cursor = db.connection().cursor(named_tuple=True)
+
+        try:
+            cursor.execute("START TRANSACTION")
+            query = 'SELECT id FROM covers WHERE md5_hash = %s'
+            cursor.execute(query, (md5_hash,))
+            cover_row = cursor.fetchone()
+
+            if cover_row:
+                cover_id = cover_row[0]
+            else:
+                cover_filename = cover.filename
+                query = 'INSERT INTO covers (file_path, mime_type, md5_hash) VALUES (%s, %s, %s)'
+                cursor.execute(query, (cover_filename, mime_type, md5_hash))
+                cover_id = cursor.lastrowid
+
+            query = 'INSERT INTO description_book (title, short_description, year_publish, publisher, author, size_book, cover_id) VALUES (%s, %s, %s, %s, %s, %s, %s)'
+            cursor.execute(query, (title, short_description, year_publish, publisher, author, size_book, cover_id))
+            book_id = cursor.lastrowid
+
+            for genre_name in genres_selected:
+                query = 'SELECT id FROM genres WHERE name = %s'
+                cursor.execute(query, (genre_name,))
+
+                genre_id = cursor.fetchone()[0]
+
+                query = 'INSERT INTO book_genre (book_id, genre_id) VALUES (%s, %s)'
+                cursor.execute(query, (book_id, genre_id))
+
+            db.connection().commit()
+
+            end_name = mime_type.split('/')[1]
+
+            cover.save(f'{app.config["UPLOAD_FOLDER"]}/{cover_id}.{end_name}')
+            flash("УРАААА", 'success')
+
+        except Exception as e:
+            db.connection().rollback()
+            flash(f'Ошибка при добавлении книги: {str(e)}', 'danger')
+
+    return render_template('createbook.html', genres=genres)
+
+
+@app.route('/book/edit/<int:book_id>')
+@login_required
+@roles_required('admin', 'moderator')
+def edit_book(book_id):
+    ...

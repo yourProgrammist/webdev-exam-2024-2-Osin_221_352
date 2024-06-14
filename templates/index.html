@@ -1,11 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Hi, Masha!</h1>
-{% if is_admin() %}
-<h1>Hi Admin</h1>
-{% elif is_moderator() %}
-<h1>Hi Moder</h1>
-{% elif is_user() %}
-<h1>Hi User</h1>
-{% endif %}
+ <div class="container mt-5">
+        <h1>Список книг</h1>
+        <div class="list-group">
+            {% for book in books %}
+                <div class="list-group-item list-group-item-action book-item">
+                    <div class="book-info">
+                        <!-- Название книги -->
+                        <h5 class="mb-1">{{ book.title }}</h5>
+                        <p class="mb-1">
+                            <!-- Жанры книги -->
+                            <strong>Genres:</strong> {{ book.genres | join(', ') }}<br>
+                            <!-- Год книги -->
+                            <strong>Year:</strong> {{ book.year }}<br>
+                            <!-- Средняя оценка книги -->
+                            <strong>Average Rating:</strong> {{ book.average_rating }}<br>
+                            <!-- Количество рецензий книги -->
+                            <strong>Review Count:</strong> {{ book.review_count }}<br>
+                        </p>
+                    </div>
+                    <div class="btn-group" role="group" aria-label="Book Actions">
+                        <a href="#" class="btn btn-primary">Просмотр</a>
+                        {% if is_admin() or is_moderator() %}
+                        <a href="#" class="btn btn-warning">Редактирование</a>
+                        {% endif %}
+                        {% if is_admin() %}
+                        <a href="#" class="btn btn-danger">Удалить</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+            {% if is_admin() %}
+            <div class="add-button">
+                <a href="{{ url_for('add_book') }}" class="btn btn-success">Добавить книгу</a>
+            </div>
+            {% endif %}
+        </div>
+ </div>
 {% endblock %}

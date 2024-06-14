@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% import 'creator_macro.html' as macros %}
+{{ macros.creator(url_for('add_book'), genres=genres) }}
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+<script>
+    const easyMDE = new EasyMDE({element: document.getElementById('short_description')});
+</script>
+{% endblock %}
