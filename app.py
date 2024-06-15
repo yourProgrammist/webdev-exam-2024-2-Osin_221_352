@@ -118,12 +118,17 @@ def load_role(role_id):
 
 
 def load_books(cur_page, per_page):
-    offset = (cur_page - 1) * per_page
-
     cursor = db.connection().cursor(dictionary=True)
     query = 'SELECT COUNT(*) FROM description_book'
     cursor.execute(query)
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    if cur_page > count_pages:
+        cur_page = count_pages
+    elif cur_page < 1:
+        cur_page = 1
+
+    offset = (cur_page - 1) * per_page
 
     query = '''
             SELECT 
@@ -273,12 +278,18 @@ def load_genres():
 
 
 def load_moderation_reviews(cur_page, per_page):
-    offset = (cur_page - 1) * per_page
 
     cursor = db.connection().cursor(dictionary=True)
     query = 'SELECT COUNT(*) FROM reviews WHERE status_id = 1'
     cursor.execute(query)
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    if cur_page > count_pages:
+        cur_page = count_pages
+    elif cur_page < 1:
+        cur_page = 1
+
+    offset = (cur_page - 1) * per_page
 
     query = """
                 SELECT
@@ -327,8 +338,6 @@ def load_review(review_id):
 
 
 def load_user_reviews(cur_page, per_page):
-    offset = (cur_page - 1) * per_page
-
     cursor = db.connection().cursor(dictionary=True)
     query = '''
         SELECT COUNT(*)
@@ -337,6 +346,13 @@ def load_user_reviews(cur_page, per_page):
     '''
     cursor.execute(query, (current_user.id,))
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    if cur_page > count_pages:
+        cur_page = count_pages
+    elif cur_page < 1:
+        cur_page = 1
+
+    offset = (cur_page - 1) * per_page
 
     query = '''
             SELECT
@@ -370,13 +386,11 @@ def index(page=1):
     return render_template("index.html", books=books, page=page, count_pages=count_pages)
 
 
-@app.route('/login')
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    return render_template("login.html")
+    if request.method == 'GET':
+        return render_template("login.html")
 
-
-@app.route('/login/auth', methods=['POST'])
-def authentication():
     login = request.form["login"]
     password = request.form["password"]
 
@@ -396,6 +410,7 @@ def authentication():
 
     login_user(User(user.id, user.login), remember)
     next_page = request.args.get("next")
+
     return redirect(next_page) if next_page else redirect(url_for('index'))
 
 
@@ -615,6 +630,7 @@ def view_book(book_id):
 @login_required
 def add_review(book_id):
     if check_review_def(book_id):
+        flash("Вы уже написали рецензию!!!", "danger")
         return redirect(url_for('index'))
 
     book = load_book(book_id)
