@@ -319,6 +319,9 @@ def index(page=1):
 
 @app.route('/login')
 def login():
+    flag = request.args.get('flag', default=0, type=int)
+    if flag:
+        flash("Для выполнения данного действия необходимо пройти процедуру аутентификации", "danger")
     return render_template("login.html")
 
 
@@ -509,6 +512,7 @@ def delete_book(book_id):
         cursor.execute("START TRANSACTION")
         query = 'SELECT cover_id FROM description_book WHERE id = %s'
         cursor.execute(query, (book_id,))
+
         file_name = cursor.fetchone()[0]
 
         query = 'SELECT mime_type FROM covers WHERE id = %s'
@@ -517,14 +521,26 @@ def delete_book(book_id):
 
         file_path = f'{app.config["UPLOAD_FOLDER"]}/{file_name}.{file_mime}'
 
-        query = 'DELETE FROM covers WHERE id = %s'
-        cursor.execute(query, (book_id,))
+        query = '''
+            SELECT COUNT(*) AS count_use_cover
+            FROM description_book
+            WHERE cover_id = %s;
+        '''
+
+        cursor.execute(query, (file_name,))
+        count_use_cover = cursor.fetchone().count_use_cover
+
+        if count_use_cover == 1:
+            query = 'DELETE FROM covers WHERE id = %s'
+            cursor.execute(query, (file_name,))
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f'Ошибка при удаление файла в системе: {e}')
 
         query = 'DELETE FROM description_book WHERE id = %s'
         cursor.execute(query, (book_id,))
         db.connection().commit()
-
-        os.remove(file_path)
 
         flash('Книга успешно удалена!', 'success')
     except Exception as e:
