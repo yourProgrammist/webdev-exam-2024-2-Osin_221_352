@@ -12,10 +12,31 @@ app = Flask(__name__)
 
 app.config.from_pyfile('config.py')
 
-login_manager = LoginManager()
-login_manager.init_app(app)
-
 db = MySQL(app)
+
+
+def load_user(user_id):
+    cursor = db.connection().cursor(named_tuple=True)
+    query = 'SELECT * FROM users WHERE users.id = %s'
+    cursor.execute(query, (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    if not user:
+        return None
+    return User(user.id, user.login, user.password_hash, user.surname, user.name, user.patronymic, user.role_id,
+                load_role(user.role_id))
+
+
+def init_login_manager():
+    login_manager = LoginManager()
+    login_manager.login_view = 'login'
+    login_manager.login_message = 'Для выполнения данного действия необходимо пройти процедуру аутентификации'
+    login_manager.login_message_category = 'warning'
+    login_manager.user_loader(load_user)
+    login_manager.init_app(app)
+
+
+init_login_manager()
 
 
 @app.context_processor
@@ -40,6 +61,9 @@ def inject_roles():
 @app.context_processor
 def inject_review():
     def check_review(book_id):
+        if not current_user.is_authenticated:
+            return False
+
         cursor = db.connection().cursor(named_tuple=True)
         query = 'SELECT id FROM reviews WHERE book_id = %s AND user_id = %s'
         cursor.execute(query, (book_id, current_user.id))
@@ -80,19 +104,6 @@ def check_review_def(book_id):
     if review:
         return review[0]
     return False
-
-
-@login_manager.user_loader
-def load_user(user_id):
-    cursor = db.connection().cursor(named_tuple=True)
-    query = 'SELECT * FROM users WHERE users.id = %s'
-    cursor.execute(query, (user_id,))
-    user = cursor.fetchone()
-    cursor.close()
-    if not user:
-        return None
-    return User(user.id, user.login, user.password_hash, user.surname, user.name, user.patronymic, user.role_id,
-                load_role(user.role_id))
 
 
 def load_role(role_id):
@@ -243,7 +254,7 @@ def load_reviews(book_id, status_id):
 
     for review in reviews:
         review['body_text'] = markdown2.markdown(review['body_text'])
-        if review['user_id'] == current_user.id:
+        if current_user.is_authenticated and review['user_id'] == current_user.id:
             current_user_review = review
 
     if current_user_review is not None:
@@ -361,9 +372,6 @@ def index(page=1):
 
 @app.route('/login')
 def login():
-    flag = request.args.get('flag', default=0, type=int)
-    if flag:
-        flash("Для выполнения данного действия необходимо пройти процедуру аутентификации", "danger")
     return render_template("login.html")
 
 
@@ -594,9 +602,7 @@ def delete_book(book_id):
 
 
 @app.route('/book/view/<int:book_id>')
-@login_required
 def view_book(book_id):
-
     book = load_book(book_id)
     book['short_description'] = markdown2.markdown(book['short_description'])
 
