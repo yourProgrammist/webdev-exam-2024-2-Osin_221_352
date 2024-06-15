@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response
 from mysql_db import MySQL
 from flask_login import current_user, LoginManager, login_user, logout_user, login_required
@@ -182,7 +184,7 @@ def logout():
 @roles_required('admin')
 def add_book():
     genres = load_genres()
-    print(request.method)
+
     if request.method == 'POST':
         title = request.form['title']
         short_description = bleach.clean(request.form['short_description'])
@@ -300,3 +302,39 @@ def edit_book(book_id):
             return redirect(request.url)
 
     return render_template('editbook.html', book=book, genres=genres)
+
+
+@app.route('/book/delete/<int:book_id>', methods=['POST'])
+@login_required
+@roles_required('admin')
+def delete_book(book_id):
+    cursor = db.connection().cursor(named_tuple=True)
+
+    try:
+        cursor.execute("START TRANSACTION")
+        query = 'SELECT cover_id FROM description_book WHERE id = %s'
+        cursor.execute(query, (book_id,))
+        file_name = cursor.fetchone()[0]
+
+        query = 'SELECT mime_type FROM covers WHERE id = %s'
+        cursor.execute(query, (file_name,))
+        file_mime = cursor.fetchone()[0].split('/')[1]
+
+        file_path = f'{app.config["UPLOAD_FOLDER"]}/{file_name}.{file_mime}'
+
+        query = 'DELETE FROM covers WHERE id = %s'
+        cursor.execute(query, (book_id,))
+
+        query = 'DELETE FROM description_book WHERE id = %s'
+        cursor.execute(query, (book_id,))
+        db.connection().commit()
+
+        os.remove(file_path)
+
+        flash('Книга успешно удалена!', 'success')
+    except Exception as e:
+        db.connection().rollback()
+        flash('Ошибка. Книга не удалена!', 'danger')
+        print('Ошибка в удалении книги: ' + str(e))
+
+    return redirect(url_for('index'))
