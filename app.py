@@ -114,27 +114,47 @@ def load_books(cur_page, per_page):
     cursor.execute(query)
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
 
-    query = """
-            WITH book_genres AS (
-            SELECT bg.book_id, GROUP_CONCAT(g.name SEPARATOR ', ') AS genres
-            FROM book_genre bg
-            JOIN genres g ON bg.genre_id = g.id
-            GROUP BY bg.book_id
-            ),
-            book_reviews AS (
-                SELECT r.book_id, ROUND(AVG(r.mark), 1) AS average_mark, COUNT(r.id) AS review_count
-                FROM reviews r
-                WHERE r.status_id = 2
-                GROUP BY r.book_id
-            )
-            SELECT b.id, b.title, b.year_publish, bg.genres, br.average_mark, br.review_count, b.cover_id, c.mime_type
-            FROM description_book b
-            LEFT JOIN book_genres bg ON b.id = bg.book_id
-            LEFT JOIN book_reviews br ON b.id = br.book_id
-            LEFT JOIN covers c ON b.cover_id = c.id
-            ORDER BY b.year_publish DESC
+    query = '''
+            SELECT 
+                b.id, 
+                b.title, 
+                b.year_publish, 
+                bg.genres, 
+                br.average_mark, 
+                br.review_count, 
+                b.cover_id, 
+                c.mime_type
+            FROM 
+                description_book b
+            LEFT JOIN (
+                SELECT 
+                    bg.book_id, 
+                    GROUP_CONCAT(g.name SEPARATOR ', ') AS genres
+                FROM 
+                    book_genre bg
+                JOIN 
+                    genres g ON bg.genre_id = g.id
+                GROUP BY 
+                    bg.book_id
+            ) bg ON b.id = bg.book_id
+            LEFT JOIN (
+                SELECT 
+                    r.book_id, 
+                    ROUND(AVG(r.mark), 1) AS average_mark, 
+                    COUNT(r.id) AS review_count
+                FROM 
+                    reviews r
+                WHERE 
+                    r.status_id = 2
+                GROUP BY 
+                    r.book_id
+            ) br ON b.id = br.book_id
+            LEFT JOIN 
+                covers c ON b.cover_id = c.id
+            ORDER BY 
+                b.year_publish DESC
             LIMIT %s OFFSET %s;
-       """
+       '''
     cursor.execute(query, (per_page, offset))
     books = cursor.fetchall()
 
