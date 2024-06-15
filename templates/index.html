@@ -3,33 +3,34 @@
  <div class="container mt-5">
         <h1>Список книг</h1>
         <div class="list-group">
-            {% for book in books %}
-                <div class="list-group-item list-group-item-action book-item" id="{{ book.id }}">
-                    <div class="book-info">
-                        <h5 class="mb-1">{{ book.title }}</h5>
-                        <p class="mb-1">
-                            <strong>Жанр(ы):</strong> {{ book.genres }}<br>
-                            <strong>Год:</strong> {{ book.year_publish }}<br>
-                            <strong>Средняя оценка:</strong> {{ book.average_mark if book.review_count else 'Нет оценок' }}<br>
-                            <strong>Количество рецензий:</strong> {{ book.review_count if book.review_count else '0' }}<br>
-                        </p>
-                    </div>
-                    <div class="btn-group" role="group" aria-label="Book Actions">
-                        {% if current_user.is_authenticated %}
-                        <a href="{{ url_for('view_book', book_id=book.id) }}" class="btn btn-primary">Просмотр</a>
-                        {% else %}
-                        <a href="{{ url_for('login', flag=1) }}" class="btn btn-primary">Просмотр</a>
-                        {% endif %}
-                        {% if is_admin() or is_moderator() %}
-                        <a href="{{ url_for('edit_book', book_id=book.id) }}" class="btn btn-warning">Редактирование</a>
-                        {% endif %}
-                        {% if is_admin() %}
-                       <button class="btn btn-danger" onclick="confirmDelete({{ book.id }}, '{{ book.title }}')">Удалить</button>
-                        {% endif %}
-                    </div>
-                </div>
-            {% endfor %}
+    {% for book in books %}
+        <div class="list-group-item list-group-item-action book-item d-flex align-items-start" id="{{ book.id }}">
+            <img src="{{ book.cover }}" alt="{{ book.title }}" class="book-image mr-3">
+            <div class="book-info">
+                <h5 class="mb-1">{{ book.title }}</h5>
+                <p class="mb-1">
+                    <strong>Жанр(ы):</strong> {{ book.genres }}<br>
+                    <strong>Год:</strong> {{ book.year_publish }}<br>
+                    <strong>Средняя оценка:</strong> {{ book.average_mark if book.review_count else 'Нет оценок' }}<br>
+                    <strong>Количество рецензий:</strong> {{ book.review_count if book.review_count else '0' }}<br>
+                </p>
+            </div>
+            <div class="btn-group ml-auto" role="group" aria-label="Book Actions">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('view_book', book_id=book.id) }}" class="btn btn-primary">Просмотр</a>
+                {% else %}
+                <a href="{{ url_for('login', flag=1) }}" class="btn btn-primary">Просмотр</a>
+                {% endif %}
+                {% if is_admin() or is_moderator() %}
+                <a href="{{ url_for('edit_book', book_id=book.id) }}" class="btn btn-warning">Редактирование</a>
+                {% endif %}
+                {% if is_admin() %}
+                <button class="btn btn-danger" onclick="confirmDelete({{ book.id }}, '{{ book.title }}')">Удалить</button>
+                {% endif %}
+            </div>
         </div>
+    {% endfor %}
+</div>
         {% if is_admin() %}
             <div class="add-button">
                 <a href="{{ url_for('add_book') }}" class="btn btn-success">Добавить книгу</a>

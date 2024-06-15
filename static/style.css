@@ -23,3 +23,14 @@ body {
     border-top-left-radius: 15px;
     border-top-right-radius: 15px;
 }
+
+.book-item {
+    display: flex;
+    align-items: start;
+}
+
+.book-image {
+    width: 100px;
+    height: auto;
+    margin-right: 15px;
+}

@@ -127,15 +127,21 @@ def load_books(cur_page, per_page):
                 WHERE r.status_id = 2
                 GROUP BY r.book_id
             )
-            SELECT b.id, b.title, b.year_publish, bg.genres, br.average_mark, br.review_count
+            SELECT b.id, b.title, b.year_publish, bg.genres, br.average_mark, br.review_count, b.cover_id, c.mime_type
             FROM description_book b
             LEFT JOIN book_genres bg ON b.id = bg.book_id
             LEFT JOIN book_reviews br ON b.id = br.book_id
+            LEFT JOIN covers c ON b.cover_id = c.id
             ORDER BY b.year_publish DESC
             LIMIT %s OFFSET %s;
        """
     cursor.execute(query, (per_page, offset))
     books = cursor.fetchall()
+
+    for book in books:
+        mime_type = book['mime_type'].split('/')[1]
+        file_name = book['cover_id']
+        book['cover'] = f'{app.config["UPLOAD_FOLDER"]}/{file_name}.{mime_type}'
 
     return books, count_pages
 
