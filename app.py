@@ -123,7 +123,7 @@ def load_books(cur_page, per_page):
     cursor.execute(query)
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
 
-    if cur_page > count_pages:
+    if cur_page > count_pages != 0:
         cur_page = count_pages
     elif cur_page < 1:
         cur_page = 1
@@ -284,7 +284,7 @@ def load_moderation_reviews(cur_page, per_page):
     cursor.execute(query)
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
 
-    if cur_page > count_pages:
+    if cur_page > count_pages != 0:
         cur_page = count_pages
     elif cur_page < 1:
         cur_page = 1
@@ -347,7 +347,7 @@ def load_user_reviews(cur_page, per_page):
     cursor.execute(query, (current_user.id,))
     count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
 
-    if cur_page > count_pages:
+    if cur_page > count_pages != 0:
         cur_page = count_pages
     elif cur_page < 1:
         cur_page = 1
