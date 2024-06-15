@@ -1,5 +1,5 @@
 import os
-
+import markdown2
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response
 from mysql_db import MySQL
 from flask_login import current_user, LoginManager, login_user, logout_user, login_required
@@ -35,6 +35,29 @@ def inject_roles():
         return current_user.is_authenticated and current_user.role == 'user'
 
     return dict(is_admin=is_admin, is_moderator=is_moderator, is_user=is_user)
+
+
+@app.context_processor
+def inject_review():
+    def check_review(book_id):
+        cursor = db.connection().cursor(named_tuple=True)
+        query = 'SELECT id FROM reviews WHERE book_id = %s AND user_id = %s'
+        cursor.execute(query, (book_id, current_user.id))
+        review = cursor.fetchone()
+        if review:
+            return review[0]
+        return False
+    return dict(check_review=check_review)
+
+
+def check_review_def(book_id):
+    cursor = db.connection().cursor(named_tuple=True)
+    query = 'SELECT id FROM reviews WHERE book_id = %s AND user_id = %s'
+    cursor.execute(query, (book_id, current_user.id))
+    review = cursor.fetchone()
+    if review:
+        return review[0]
+    return False
 
 
 @login_manager.user_loader
@@ -106,24 +129,60 @@ def load_book(book_id):
                     db.year_publish AS year,
                     db.size_book,
                     GROUP_CONCAT(g.name SEPARATOR ', ') AS genres,
-                    db.short_description
+                    db.short_description,
+                    c.mime_type
                 FROM
                     description_book db
                 LEFT JOIN
                     book_genre bg ON db.id = bg.book_id
                 LEFT JOIN
                     genres g ON bg.genre_id = g.id
+                LEFT JOIN
+                    covers c ON db.cover_id = c.id
                 WHERE
                     db.id = %s
                 GROUP BY
-                    db.id
+                    db.id, c.mime_type
         """
 
     cursor.execute(query, (book_id,))
     book = cursor.fetchone()
-    book['genres'] = book['genres'].split(', ')
-
+    book['mime_type'] = book['mime_type'].split('/')
+    mime_type = book['mime_type'][1]
+    folder = app.config["UPLOAD_FOLDER"].split('/')[1]
+    book['cover'] = f'{folder}/{book_id}.{mime_type}'
     return book
+
+
+def load_reviews(book_id):
+    cursor = db.connection().cursor(dictionary=True)
+    query = '''
+        SELECT
+            users.login,
+            reviews.id,
+            reviews.user_id,
+            reviews.mark,
+            reviews.body_text
+        FROM
+            reviews
+        JOIN
+            users ON reviews.user_id = users.id
+        WHERE
+            reviews.book_id = %s
+        '''
+    cursor.execute(query, (book_id,))
+    reviews = cursor.fetchall()
+    current_user_review = None
+
+    for review in reviews:
+        review['body_text'] = markdown2.markdown(review['body_text'])
+        if review['user_id'] == current_user.id:
+            current_user_review = review
+
+    if current_user_review is not None:
+        reviews.append(current_user_review)
+
+    return reviews
 
 
 def load_genres():
@@ -241,7 +300,7 @@ def add_book():
 
             cover.save(f'{app.config["UPLOAD_FOLDER"]}/{cover_id}.{end_name}')
 
-            ######### ПЕРЕХОД НА ПРОСМОТР
+            return redirect(url_for('view_book', book_id=book_id))
 
         except Exception as e:
             db.connection().rollback()
@@ -293,7 +352,7 @@ def edit_book(book_id):
 
             db.connection().commit()
 
-            ######### ПЕРЕХОД НА ПРОСМОТР
+            return redirect(url_for('view_book', book_id=book_id))
 
         except Exception as e:
             db.connection().rollback()
@@ -338,3 +397,44 @@ def delete_book(book_id):
         print('Ошибка в удалении книги: ' + str(e))
 
     return redirect(url_for('index'))
+
+
+@app.route('/book/view/<int:book_id>')
+@login_required
+def view_book(book_id):
+
+    book = load_book(book_id)
+    book['short_description'] = markdown2.markdown(book['short_description'])
+
+    reviews = load_reviews(book_id)
+
+    return render_template('viewbook.html', book=book, reviews=reviews)
+
+
+@app.route('/book/view/<int:book_id>/review/add', methods=['GET', 'POST'])
+@login_required
+def add_review(book_id):
+    if check_review_def(book_id):
+        return redirect(url_for('index'))
+
+    book = load_book(book_id)
+
+    if request.method == 'POST':
+        mark = request.form['mark']
+        body_text = bleach.clean(request.form['body_text'])
+        try:
+            cursor = db.connection().cursor(named_tuple=True)
+            query = 'INSERT INTO reviews (book_id, user_id, mark, body_text) VALUES (%s, %s, %s, %s)'
+            cursor.execute(query, (book_id, current_user.id, mark, body_text))
+
+            db.connection().commit()
+
+            flash('Сохранение выполнено успешно!', 'success')
+
+            return redirect(url_for('view_book', book_id=book_id))
+        except Exception as e:
+            print(f'Ошибка при сохранении рецензии {e}')
+            flash('Произошла ошибка при сохранение. Проверьте данные', 'danger')
+            return redirect(request.url)
+
+    return render_template('createreview.html', book_id=book_id, book=book)

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-4">
+            <img src="{{ url_for('static', filename=book.cover) }}" alt="{{ book.title }}" class="img-fluid">
+        </div>
+        <div class="col-md-8">
+            <h2>{{ book.title }}</h2>
+            <p><strong>Автор:</strong> {{ book.author }}</p>
+            <p><strong>Издатель:</strong> {{ book.publisher }}</p>
+            <p><strong>Жанр(ы):</strong> {{ book.genres }}</p>
+            <p><strong>Год издания:</strong> {{ book.year }}</p>
+            <p><strong>Объем:</strong> {{ book.size_book }} страниц</p>
+            <div>
+                <strong>Описание:</strong>
+                <div>{{ book.short_description | safe }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h3>Отзывы</h3>
+            {% for review in reviews %}
+            {% if check_review(book.id) != review.id %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Оценка: {{ review.mark }} / 5</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">Пользователь: {{ review.login }}</h6>
+                    <p class="card-text">{{ review.body_text | safe }}</p>
+                </div>
+            </div>
+            {% endif %}
+            {% else %}
+            <p>Отзывов пока нет.</p>
+            {% endfor %}
+            {% if check_review(book.id) %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Оценка: {{ reviews[-1].mark }} / 5</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">Пользователь: {{ reviews[-1].login }}</h6>
+                    <p class="card-text">{{ reviews[-1].body_text | safe }}</p>
+                </div>
+            </div>
+            {% else %}
+            <div class="add-button">
+                <a href="{{ url_for('add_review', book_id=book.id) }}" class="btn btn-success">Написать рецензию</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
