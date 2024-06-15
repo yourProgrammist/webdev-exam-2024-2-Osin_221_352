@@ -14,6 +14,15 @@
                 <li class="nav-item active">
                     <a class="nav-link" href="{{ url_for('index') }}">Главная<span class="sr-only"></span></a>
                 </li>
+                {% if is_user() %}
+                <li class="nav-item active">
+                    <a class="nav-link" href="{{ url_for('get_my_reviews') }}">Мои рецензии<span class="sr-only"></span></a>
+                </li>
+                {% elif is_moderator() %}
+                <li class="nav-item active">
+                    <a class="nav-link" href="{{ url_for('view_reviews') }}">Модерация рецензий<span class="sr-only"></span></a>
+                </li>
+                {% endif %}
                 {% if current_user.is_authenticated %}
                 <li class="nav-item">
                     <a class="nav-link" href="#">{{ current_user.surname }} {{ current_user.name }} {{ current_user.patronymic }}</a>

@@ -1,6 +1,6 @@
 import os
 import markdown2
-from flask import Flask, render_template, request, redirect, url_for, flash, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash
 from mysql_db import MySQL
 from flask_login import current_user, LoginManager, login_user, logout_user, login_required
 from models import User, Role
@@ -47,7 +47,29 @@ def inject_review():
         if review:
             return review[0]
         return False
-    return dict(check_review=check_review)
+
+    def check_review_status(book_id):
+        review_id = check_review(book_id)
+        cursor = db.connection().cursor(named_tuple=True)
+        query = '''
+            SELECT
+                rs.status
+            FROM
+                reviews r
+            JOIN
+                review_status rs ON r.status_id = rs.id
+            WHERE
+                r.id = %s;
+        '''
+
+        cursor.execute(query, (review_id,))
+        review_status = cursor.fetchone()
+        if review_status:
+            return review_status[0]
+
+        return False
+
+    return dict(check_review=check_review, check_review_status=check_review_status)
 
 
 def check_review_def(book_id):
@@ -94,14 +116,15 @@ def load_books(cur_page, per_page):
 
     query = """
             WITH book_genres AS (
-                SELECT bg.book_id, GROUP_CONCAT(g.name SEPARATOR ', ') as genres
-                FROM book_genre bg
-                JOIN genres g ON bg.genre_id = g.id
-                GROUP BY bg.book_id
+            SELECT bg.book_id, GROUP_CONCAT(g.name SEPARATOR ', ') AS genres
+            FROM book_genre bg
+            JOIN genres g ON bg.genre_id = g.id
+            GROUP BY bg.book_id
             ),
             book_reviews AS (
-                SELECT r.book_id, ROUND(AVG(r.mark), 1) as average_mark, COUNT(r.id) as review_count
+                SELECT r.book_id, ROUND(AVG(r.mark), 1) AS average_mark, COUNT(r.id) AS review_count
                 FROM reviews r
+                WHERE r.status_id = 2
                 GROUP BY r.book_id
             )
             SELECT b.id, b.title, b.year_publish, bg.genres, br.average_mark, br.review_count
@@ -130,6 +153,7 @@ def load_book(book_id):
                     db.size_book,
                     GROUP_CONCAT(g.name SEPARATOR ', ') AS genres,
                     db.short_description,
+                    db.cover_id,
                     c.mime_type
                 FROM
                     description_book db
@@ -148,13 +172,14 @@ def load_book(book_id):
     cursor.execute(query, (book_id,))
     book = cursor.fetchone()
     book['mime_type'] = book['mime_type'].split('/')
+    cover_id = book['cover_id']
     mime_type = book['mime_type'][1]
     folder = app.config["UPLOAD_FOLDER"].split('/')[1]
-    book['cover'] = f'{folder}/{book_id}.{mime_type}'
+    book['cover'] = f'{folder}/{cover_id}.{mime_type}'
     return book
 
 
-def load_reviews(book_id):
+def load_reviews(book_id, status_id):
     cursor = db.connection().cursor(dictionary=True)
     query = '''
         SELECT
@@ -168,9 +193,9 @@ def load_reviews(book_id):
         JOIN
             users ON reviews.user_id = users.id
         WHERE
-            reviews.book_id = %s
+            reviews.book_id = %s AND reviews.status_id = %s
         '''
-    cursor.execute(query, (book_id,))
+    cursor.execute(query, (book_id, status_id))
     reviews = cursor.fetchall()
     current_user_review = None
 
@@ -192,6 +217,96 @@ def load_genres():
     genres = cursor.fetchall()
     genres = [genre.name for genre in genres]
     return genres
+
+
+def load_moderation_reviews(cur_page, per_page):
+    offset = (cur_page - 1) * per_page
+
+    cursor = db.connection().cursor(dictionary=True)
+    query = 'SELECT COUNT(*) FROM reviews WHERE status_id = 1'
+    cursor.execute(query)
+    count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    query = """
+                SELECT
+                    b.title,
+                    u.name,
+                    r.add_date,
+                    r.id
+                FROM
+                    reviews r
+                JOIN
+                    description_book b ON r.book_id = b.id
+                JOIN
+                    users u ON r.user_id = u.id
+                WHERE r.status_id = 1
+                ORDER BY
+                    r.add_date DESC
+                LIMIT %s OFFSET %s;
+           """
+
+    cursor.execute(query, (per_page, offset))
+    reviews = cursor.fetchall()
+
+    return reviews, count_pages
+
+
+def load_review(review_id):
+    cursor = db.connection().cursor(dictionary=True)
+    query = '''
+            SELECT
+                u.login,
+                r.id,
+                r.mark,
+                r.body_text,
+                r.status_id
+            FROM
+                reviews r
+            JOIN
+                users u ON r.user_id = u.id
+            WHERE
+                r.id = %s;
+    '''
+    cursor.execute(query, (review_id,))
+    review = cursor.fetchone()
+    review['body_text'] = markdown2.markdown(review['body_text'])
+    return review
+
+
+def load_user_reviews(cur_page, per_page):
+    offset = (cur_page - 1) * per_page
+
+    cursor = db.connection().cursor(dictionary=True)
+    query = '''
+        SELECT COUNT(*)
+        FROM reviews
+        WHERE user_id = %s;
+    '''
+    cursor.execute(query, (current_user.id,))
+    count_pages = (cursor.fetchone()['COUNT(*)'] + per_page - 1) // per_page
+
+    query = '''
+            SELECT
+            b.title,
+            r.mark,
+            r.body_text,
+            rs.status
+        FROM
+            reviews r
+        JOIN
+            description_book b ON r.book_id = b.id
+        JOIN
+            review_status rs ON r.status_id = rs.id
+        WHERE
+            r.user_id = %s
+        LIMIT %s OFFSET %s;
+     '''
+    cursor.execute(query, (current_user.id, per_page, offset))
+    reviews = cursor.fetchall()
+    for review in reviews:
+        review['body_text'] = markdown2.markdown(review['body_text'])
+
+    return reviews, count_pages
 
 
 @app.route('/')
@@ -281,7 +396,20 @@ def add_book():
                 cursor.execute(query, (cover_filename, mime_type, md5_hash))
                 cover_id = cursor.lastrowid
 
-            query = 'INSERT INTO description_book (title, short_description, year_publish, publisher, author, size_book, cover_id) VALUES (%s, %s, %s, %s, %s, %s, %s)'
+            query = '''
+                INSERT INTO
+                description_book
+                (
+                    title,
+                    short_description,
+                    year_publish,
+                    publisher,
+                    author,
+                    size_book,
+                    cover_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            '''
             cursor.execute(query, (title, short_description, year_publish, publisher, author, size_book, cover_id))
             book_id = cursor.lastrowid
 
@@ -334,9 +462,17 @@ def edit_book(book_id):
         try:
             cursor.execute("START TRANSACTION")
 
-            query = '''UPDATE description_book 
-                                   SET title = %s, short_description = %s, year_publish = %s, publisher = %s, author = %s, size_book = %s 
-                                   WHERE id = %s'''
+            query = '''
+                UPDATE description_book
+                SET
+                    title = %s,
+                    short_description = %s,
+                    year_publish = %s,
+                    publisher = %s,
+                    author = %s,
+                    size_book = %s
+                WHERE id = %s
+            '''
             cursor.execute(query, (title, short_description, year_publish, publisher, author, size_book, book_id))
 
             query = 'DELETE FROM book_genre WHERE book_id = %s'
@@ -406,7 +542,7 @@ def view_book(book_id):
     book = load_book(book_id)
     book['short_description'] = markdown2.markdown(book['short_description'])
 
-    reviews = load_reviews(book_id)
+    reviews = load_reviews(book_id, 2)
 
     return render_template('viewbook.html', book=book, reviews=reviews)
 
@@ -424,8 +560,8 @@ def add_review(book_id):
         body_text = bleach.clean(request.form['body_text'])
         try:
             cursor = db.connection().cursor(named_tuple=True)
-            query = 'INSERT INTO reviews (book_id, user_id, mark, body_text) VALUES (%s, %s, %s, %s)'
-            cursor.execute(query, (book_id, current_user.id, mark, body_text))
+            query = 'INSERT INTO reviews (book_id, user_id, mark, body_text, status_id) VALUES (%s, %s, %s, %s, %s)'
+            cursor.execute(query, (book_id, current_user.id, mark, body_text, 1))
 
             db.connection().commit()
 
@@ -438,3 +574,51 @@ def add_review(book_id):
             return redirect(request.url)
 
     return render_template('createreview.html', book_id=book_id, book=book)
+
+
+@app.route('/view/reviews')
+@app.route('/view/reviews/<int:page>')
+@login_required
+@roles_required('admin', 'moderator')
+def view_reviews(page=1):
+    reviews, count_pages = load_moderation_reviews(page, app.config["POSTS_PER_PAGE"])
+    return render_template("viewreviewmoder.html", reviews=reviews, page=page, count_pages=count_pages)
+
+
+@app.route('/view/reviews/change-status/<int:review_id>', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'moderator')
+def change_status_review(review_id):
+    review = load_review(review_id)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'approve':
+            review['status_id'] = 2
+        elif action == 'reject':
+            review['status_id'] = 3
+
+        cursor = db.connection().cursor(named_tuple=True)
+        try:
+            query = 'UPDATE reviews SET status_id = %s WHERE id = %s'
+            cursor.execute(query, (review['status_id'], review_id))
+
+            db.connection().commit()
+
+            flash('Статус рецензии успешно обновлен!', 'success')
+
+            return redirect(url_for('view_reviews'))
+        except Exception as e:
+            print(f'Ошибка при изменении статуса рецензии: {e}')
+            flash('Ошибка при изменении статуса рецензии!', 'danger')
+            return redirect(request.url)
+
+    return render_template("reviewchangestatus.html", review=review)
+
+
+@app.route('/view/my-reviews')
+@app.route('/view/my-reviews/<int:page>')
+@login_required
+def get_my_reviews(page=1):
+    reviews, count_pages = load_user_reviews(page, app.config["POSTS_PER_PAGE"])
+    return render_template('viewreviewuser.html', reviews=reviews, page=page, count_pages=count_pages)

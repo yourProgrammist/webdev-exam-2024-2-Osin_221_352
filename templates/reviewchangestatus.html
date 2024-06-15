@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+    <h2>Рассмотреть рецензию</h2>
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Рецензия #{{ review.id }}</h5>
+            <h6 class="card-subtitle mb-2 text-muted">Пользователь: {{ review.login }}</h6>
+            <p class="card-text">Оценка: {{ review.mark }}</p>
+            <p class="card-text">{{ review.body_text | safe }}</p>
+            <form method="POST">
+                <button type="submit" name="action" value="approve" class="btn btn-success">Одобрить</button>
+                <button type="submit" name="action" value="reject" class="btn btn-danger">Отклонить</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
