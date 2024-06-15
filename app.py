@@ -195,14 +195,30 @@ def load_book(book_id):
                     db.id, c.mime_type
         """
 
-    cursor.execute(query, (book_id,))
-    book = cursor.fetchone()
-    book['mime_type'] = book['mime_type'].split('/')
-    cover_id = book['cover_id']
-    mime_type = book['mime_type'][1]
-    folder = app.config["UPLOAD_FOLDER"].split('/')[1]
-    book['cover'] = f'{folder}/{cover_id}.{mime_type}'
-    return book
+    try:
+        cursor.execute(query, (book_id,))
+        book = cursor.fetchone()
+
+        if book:
+            if book['mime_type']:
+                book['mime_type'] = book['mime_type'].split('/')
+                cover_id = book['cover_id']
+                mime_type = book['mime_type'][1] if len(book['mime_type']) > 1 else ''
+                folder = app.config["UPLOAD_FOLDER"].split('/')[1]
+                book['cover'] = f'{folder}/{cover_id}.{mime_type}' if cover_id and mime_type else None
+            else:
+                book['cover'] = None
+
+            if not book['genres']:
+                book['genres'] = ''
+
+            return book
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Ошибка при загрузке(РЕДАКТИРОВАНИЕ) книги: {e}")
+        return None
 
 
 def load_reviews(book_id, status_id):
